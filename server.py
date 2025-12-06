@@ -22,9 +22,9 @@ class Server:
         try:
             with self.ipc.open_rw_locked():
                 try:
-                    state, seq, payload = self.ipc.read_state()
+                    state, seq, payload = self.ipc.read()
                 except ValueError as e:
-                    self.ipc.write_state(RecordType.Error, 0, f"invalid_state:{e}")
+                    self.ipc.write(RecordType.Error, 0, f"invalid_state:{e}")
                     self.logger.error(f"Invalid state: {e}")
                     return
 
@@ -32,10 +32,10 @@ class Server:
                     msg = payload.strip().lower()
                     if msg.lower() == "ping":
                         self.logger.info(f"Got request seq={seq}")
-                        self.ipc.write_state(RecordType.Response, seq, "pong")
+                        self.ipc.write(RecordType.Response, seq, "pong")
                     else:
                         self.logger.error(f"Got bad request seq={seq}, payload={payload}")
-                        self.ipc.write_state(RecordType.Error, seq, "bad_request")
+                        self.ipc.write(RecordType.Error, seq, "bad_request")
         except OSError as e:
             self.logger.error(f"Open error: {e}")
             time.sleep(self.poll_interval)

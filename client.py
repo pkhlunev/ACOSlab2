@@ -23,7 +23,7 @@ class Client:
         try:
             with self.ipc.open_rw_locked():
                 try:
-                    state, seq, _ = self.ipc.read_state()
+                    state, seq, _ = self.ipc.read()
                 except ValueError as e:
                     self.logger.error(f"Invalid state in file: {e}")
                     new_seq = 1
@@ -33,7 +33,7 @@ class Client:
                         return None
                     new_seq = seq + 1
 
-                self.ipc.write_state(RecordType.Request, new_seq, payload)
+                self.ipc.write(RecordType.Request, new_seq, payload)
                 self.logger.info(f"Sent request seq={new_seq}, payload={payload}")
                 return new_seq
         except FileNotFoundError:
@@ -50,7 +50,7 @@ class Client:
             try:
                 with self.ipc.open_r():
                     try:
-                        state, r_seq, payload = self.ipc.read_state()
+                        state, r_seq, payload = self.ipc.read()
                     except ValueError as e:
                         self.logger.error(f"Invalid response: {e}")
                         return

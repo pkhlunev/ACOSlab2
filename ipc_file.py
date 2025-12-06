@@ -48,12 +48,12 @@ class IPCFile:
         return IPCRecord(state, seq, payload)
 
     def _open(self, flags: int, mode: str) -> IO:
-        self.close()
+        self._close()
         fd = os.open(self.path, flags)
         self.file = os.fdopen(fd, mode, buffering=1)
         return self.file
 
-    def close(self) -> None:
+    def _close(self) -> None:
         if self.file is not None and not self.file.closed:
             self.file.close()
         self.file = None
@@ -72,7 +72,7 @@ class IPCFile:
             fcntl.flock(f, fcntl.LOCK_UN)
         self.logger.debug(f"Opened file {self.path}")
 
-    def read_state(self) -> IPCRecord:
+    def read(self) -> IPCRecord:
         file = self._ensure_file()
         file.seek(0)
         data = file.read()
@@ -81,7 +81,7 @@ class IPCFile:
         line = data.splitlines()[0]
         return self._parse_line(line)
 
-    def write_state(self, state: RecordType, seq: int, payload: str) -> None:
+    def write(self, state: RecordType, seq: int, payload: str) -> None:
         file = self._ensure_file()
         line = f"{state.value};{seq};{payload}\n"
         file.seek(0)
@@ -97,7 +97,7 @@ class IPCFile:
         try:
             yield self
         finally:
-            self.close()
+            self._close()
 
     @contextmanager
     def open_rw_locked(self):
@@ -107,4 +107,4 @@ class IPCFile:
             yield self
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
-            self.close()
+            self._close()
