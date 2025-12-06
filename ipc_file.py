@@ -1,6 +1,7 @@
 import fcntl
-import logging
 import os
+from logging import Logger
+from pathlib import Path
 from contextlib import contextmanager
 from enum import IntEnum
 from typing import IO, NamedTuple
@@ -20,14 +21,36 @@ class IPCRecord(NamedTuple):
 
 
 class IPCFile:
-    def __init__(self, path: str, logger: logging.Logger) -> None:
-        self.path = path
-        self.file = None
-        self.logger = logger
+    def __init__(self, path_str: str, logger: Logger) -> None:
+        self.path: Path = Path(path_str)
+        self.file: IO | None = None
+        self.logger: Logger = logger
 
     def _ensure_file(self) -> IO:
         if self.file is None or self.file.closed:
             raise ValueError("file is not opened")
+        return self.file
+
+    @staticmethod
+    def _parse_line(line: str) -> IPCRecord:
+        parts = line.strip().split(";", 2)
+        if len(parts) != 3:
+            raise ValueError("bad format")
+        try:
+            state = RecordType(int(parts[0].strip()))
+        except (ValueError, KeyError) as e:
+            raise ValueError("bad state") from e
+        try:
+            seq = int(parts[1].strip())
+        except ValueError as e:
+            raise ValueError("bad seq") from e
+        payload = parts[2]
+        return IPCRecord(state, seq, payload)
+
+    def _open(self, flags: int, mode: str) -> IO:
+        self.close()
+        fd = os.open(self.path, flags)
+        self.file = os.fdopen(fd, mode, buffering=1)
         return self.file
 
     def close(self) -> None:
@@ -49,22 +72,6 @@ class IPCFile:
             fcntl.flock(f, fcntl.LOCK_UN)
         self.logger.debug(f"Opened file {self.path}")
 
-    @staticmethod
-    def _parse_line(line: str) -> IPCRecord:
-        parts = line.strip().split(";", 2)
-        if len(parts) != 3:
-            raise ValueError("bad format")
-        try:
-            state = RecordType(int(parts[0].strip()))
-        except (ValueError, KeyError) as e:
-            raise ValueError("bad state") from e
-        try:
-            seq = int(parts[1].strip())
-        except ValueError as e:
-            raise ValueError("bad seq") from e
-        payload = parts[2]
-        return IPCRecord(state, seq, payload)
-
     def read_state(self) -> IPCRecord:
         file = self._ensure_file()
         file.seek(0)
@@ -83,12 +90,6 @@ class IPCFile:
         file.flush()
         os.fsync(file.fileno())
         self.logger.debug(f"Wrote to file {self.path} (fd={file.fileno()}): {line.strip()}")
-
-    def _open(self, flags: int, mode: str) -> IO:
-        self.close()
-        fd = os.open(self.path, flags)
-        self.file = os.fdopen(fd, mode, buffering=1)
-        return self.file
 
     @contextmanager
     def open_r(self):
