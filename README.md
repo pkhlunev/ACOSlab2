@@ -11,13 +11,13 @@ cd ACOSlab2
 ```shell
 chmod +x server.py
 ./server.py -h
-./server.py -p ipc_file -i 0.5
+./server.py -p tfile -i 0.5
 ```
 - #### Запустить `client.py` с таким же `--path` (`-p`), чтобы они общались между собой. 
 ###### Пример:
 ```shell
 chmod +x client.py
 ./client.py -h
-./server.py -p ipc_file -i 0.5 -t 5.0
+./server.py -p tfile -i 0.5 -t 5.0
 ```
 - #### Писать в интерактивный shell `client.py` payload. Сервер принимает только `ping` как правильный payload. При неправильном payload выдаст ошибку bad_request.
