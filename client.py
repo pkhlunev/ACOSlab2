@@ -4,26 +4,26 @@ import argparse
 import logging
 import time
 
-from ipc_file import IPCFile, RecordType
+from transport_file import TransportFile, RecordType
 
 DEFAULT_TIMEOUT = 3.0
 DEFAULT_POLL_INTERVAL = 0.1
-DEFAULT_IPC_PATH = "/tmp/ipc_file"
+DEFAULT_TFILE_PATH = "/tmp/transport_file"
 
 
 class Client:
-    def __init__(self, ipc_path: str, timeout: float, poll_interval: float, debug: bool):
+    def __init__(self, tfile_path: str, timeout: float, poll_interval: float, debug: bool):
         self.timeout = timeout
         self.poll_interval = poll_interval
         self.logger = logging.getLogger("client")
         self.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-        self.ipc = IPCFile(ipc_path, self.logger)
+        self.tfile = TransportFile(tfile_path, self.logger)
 
     def _write_request(self, payload: str):
         try:
-            with self.ipc.open_rw_locked():
+            with self.tfile.open_rw_locked():
                 try:
-                    state, seq, _ = self.ipc.read()
+                    state, seq, _ = self.tfile.read()
                 except ValueError as e:
                     self.logger.error(f"Invalid state in file: {e}")
                     new_seq = 1
@@ -33,7 +33,7 @@ class Client:
                         return None
                     new_seq = seq + 1
 
-                self.ipc.write(RecordType.Request, new_seq, payload)
+                self.tfile.write(RecordType.Request, new_seq, payload)
                 self.logger.info(f"Sent request seq={new_seq}, payload={payload}")
                 return new_seq
         except FileNotFoundError:
@@ -48,9 +48,9 @@ class Client:
 
         while time.time() < deadline:
             try:
-                with self.ipc.open_r():
+                with self.tfile.open_r():
                     try:
-                        state, r_seq, payload = self.ipc.read()
+                        state, r_seq, payload = self.tfile.read()
                     except ValueError as e:
                         self.logger.error(f"Invalid response: {e}")
                         return
@@ -76,7 +76,7 @@ class Client:
         self._wait_response(seq)
 
     def run_shell(self) -> None:
-        self.logger.info(f"Client is started. IPC file: {self.ipc.path}")
+        self.logger.info(f"Client is started. Transport file: {self.tfile.path}")
         self.logger.info("Available commands: ping | any_text (as payload) | exit/quit/q")
         while True:
             try:
@@ -96,12 +96,12 @@ class Client:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IPC file client")
+    parser = argparse.ArgumentParser(description="Transport file client")
     parser.add_argument(
         "-p",
         "--path",
-        default=DEFAULT_IPC_PATH,
-        help=f"Path to IPC file (default: {DEFAULT_IPC_PATH})",
+        default=DEFAULT_TFILE_PATH,
+        help=f"Path to transport file (default: {DEFAULT_TFILE_PATH})",
     )
     parser.add_argument(
         "-t",

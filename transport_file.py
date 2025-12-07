@@ -13,14 +13,14 @@ class RecordType(IntEnum):
     Request = 1
 
 
-class IPCRecord(NamedTuple):
+class TransportRecord(NamedTuple):
     state: RecordType
     seq: int
     payload: str
 
 
 
-class IPCFile:
+class TransportFile:
     def __init__(self, path_str: str, logger: Logger) -> None:
         self.path: Path = Path(path_str)
         self.file: IO | None = None
@@ -32,7 +32,7 @@ class IPCFile:
         return self.file
 
     @staticmethod
-    def _parse_line(line: str) -> IPCRecord:
+    def _parse_line(line: str) -> TransportRecord:
         parts = line.strip().split(";", 2)
         if len(parts) != 3:
             raise ValueError("bad format")
@@ -45,7 +45,7 @@ class IPCFile:
         except ValueError as e:
             raise ValueError("bad seq") from e
         payload = parts[2]
-        return IPCRecord(state, seq, payload)
+        return TransportRecord(state, seq, payload)
 
     def _open(self, flags: int, mode: str) -> IO:
         self._close()
@@ -72,7 +72,7 @@ class IPCFile:
             fcntl.flock(f, fcntl.LOCK_UN)
         self.logger.debug(f"Opened file {self.path}")
 
-    def read(self) -> IPCRecord:
+    def read(self) -> TransportRecord:
         file = self._ensure_file()
         file.seek(0)
         data = file.read()

@@ -4,27 +4,27 @@ import argparse
 import logging
 import time
 
-from ipc_file import IPCFile, RecordType
+from transport_file import TransportFile, RecordType
 
 DEFAULT_POLL_INTERVAL = 0.1
-DEFAULT_IPC_PATH = "/tmp/ipc_file"
+DEFAULT_TFILE_PATH = "/tmp/transport_file"
 
 
 class Server:
-    def __init__(self, ipc_path: str, poll_interval: float, debug: bool):
+    def __init__(self, tfile_path: str, poll_interval: float, debug: bool):
         self.poll_interval = poll_interval
         self.logger = logging.getLogger("server")
         self.logger.setLevel(logging.DEBUG if debug else logging.INFO)
-        self.ipc = IPCFile(ipc_path, self.logger)
-        self.ipc.init()
+        self.tfile = TransportFile(tfile_path, self.logger)
+        self.tfile.init()
 
     def handle_request(self) -> None:
         try:
-            with self.ipc.open_rw_locked():
+            with self.tfile.open_rw_locked():
                 try:
-                    state, seq, payload = self.ipc.read()
+                    state, seq, payload = self.tfile.read()
                 except ValueError as e:
-                    self.ipc.write(RecordType.Error, 0, f"invalid_state:{e}")
+                    self.tfile.write(RecordType.Error, 0, f"invalid_state:{e}")
                     self.logger.error(f"Invalid state: {e}")
                     return
 
@@ -32,17 +32,17 @@ class Server:
                     msg = payload.strip().lower()
                     if msg.lower() == "ping":
                         self.logger.info(f"Got request seq={seq}")
-                        self.ipc.write(RecordType.Response, seq, "pong")
+                        self.tfile.write(RecordType.Response, seq, "pong")
                     else:
                         self.logger.error(f"Got bad request seq={seq}, payload={payload}")
-                        self.ipc.write(RecordType.Error, seq, "bad_request")
+                        self.tfile.write(RecordType.Error, seq, "bad_request")
         except OSError as e:
             self.logger.error(f"Open error: {e}")
             time.sleep(self.poll_interval)
             return
 
     def start(self) -> None:
-        self.logger.info(f"Server is started. Listening on {self.ipc.path}...")
+        self.logger.info(f"Server is started. Listening on {self.tfile.path}...")
         try:
             while True:
                 self.handle_request()
@@ -52,12 +52,12 @@ class Server:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IPC file server")
+    parser = argparse.ArgumentParser(description="Transport file server")
     parser.add_argument(
         "-p",
         "--path",
-        default=DEFAULT_IPC_PATH,
-        help=f"Path to IPC file (default: {DEFAULT_IPC_PATH})",
+        default=DEFAULT_TFILE_PATH,
+        help=f"Path to transport file (default: {DEFAULT_TFILE_PATH})",
     )
     parser.add_argument(
         "-i",
