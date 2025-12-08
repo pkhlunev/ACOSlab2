@@ -1,0 +1,9 @@
+services:
+  riscv-vm:
+    build: .
+    privileged: true
+    container_name: riscv-vm
+    volumes:
+      - ./image.qcow2:/riscv/image.qcow2
+      - ./..:/mnt/shared
+    command: ["/riscv/run_qemu.sh"]
