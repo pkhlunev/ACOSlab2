@@ -18,7 +18,7 @@ class TransportRecord(NamedTuple):
     seq: int
     payload: str
 
-
+MAX_RECORD_BYTES = 1024 * 1024 # 1 MB
 
 class TransportFile:
     def __init__(self, path_str: str, logger: Logger) -> None:
@@ -82,7 +82,7 @@ class TransportFile:
         fd = self._ensure_file()
 
         os.lseek(fd, 0, os.SEEK_SET)
-        data = os.read(fd, 4096)
+        data = os.read(fd, MAX_RECORD_BYTES)
         if not data:
             raise ValueError("empty file")
         first_line = data.splitlines()[0].decode()
