@@ -4,7 +4,7 @@ from logging import Logger
 from pathlib import Path
 from contextlib import contextmanager
 from enum import IntEnum
-from typing import IO, NamedTuple
+from typing import NamedTuple
 
 
 class RecordType(IntEnum):
@@ -23,13 +23,13 @@ class TransportRecord(NamedTuple):
 class TransportFile:
     def __init__(self, path_str: str, logger: Logger) -> None:
         self.path: Path = Path(path_str)
-        self.file: IO | None = None
+        self.fd: int = -1
         self.logger: Logger = logger
 
-    def _ensure_file(self) -> IO:
-        if self.file is None or self.file.closed:
+    def _ensure_file(self) -> int:
+        if self.fd == -1:
             raise ValueError("file is not opened")
-        return self.file
+        return self.fd
 
     @staticmethod
     def _parse_line(line: str) -> TransportRecord:
@@ -47,53 +47,59 @@ class TransportFile:
         payload = parts[2]
         return TransportRecord(state, seq, payload)
 
-    def _open(self, flags: int, mode: str) -> IO:
+    def _open(self, flags: int, mode: int = 0o666) -> int:
         self._close()
-        fd = os.open(self.path, flags)
-        self.file = os.fdopen(fd, mode, buffering=1)
-        return self.file
+        self.fd = os.open(self.path, flags, mode)
+        return self.fd
 
     def _close(self) -> None:
-        if self.file is not None and not self.file.closed:
-            self.file.close()
-        self.file = None
+        if self.fd != -1:
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
+        self.fd = -1
 
     def init(self) -> None:
         fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o666)
-        f = os.fdopen(fd, "r+", buffering=1)
-        with f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            f.seek(0, os.SEEK_END)
-            if f.tell() == 0:
-                f.seek(0)
-                f.write(f"{RecordType.Response.value};0;\n")
-                f.flush()
-                os.fsync(f.fileno())
-            fcntl.flock(f, fcntl.LOCK_UN)
+
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+
+            size = os.lseek(fd, 0, os.SEEK_END)
+            if size == 0:
+                os.lseek(fd, 0, os.SEEK_SET)
+                line = f"{RecordType.Response.value};0;\n".encode()
+                os.write(fd, line)
+                os.fsync(fd)
+
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
         self.logger.debug(f"Opened file {self.path}")
 
     def read(self) -> TransportRecord:
-        file = self._ensure_file()
-        file.seek(0)
-        data = file.read()
+        fd = self._ensure_file()
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        data = os.read(fd, 4096)
         if not data:
             raise ValueError("empty file")
-        line = data.splitlines()[0]
-        return self._parse_line(line)
+        first_line = data.splitlines()[0].decode()
+        return self._parse_line(first_line)
 
     def write(self, state: RecordType, seq: int, payload: str) -> None:
-        file = self._ensure_file()
-        line = f"{state.value};{seq};{payload}\n"
-        file.seek(0)
-        file.truncate()
-        file.write(line)
-        file.flush()
-        os.fsync(file.fileno())
-        self.logger.debug(f"Wrote to file {self.path} (fd={file.fileno()}): {line.strip()}")
+        fd = self._ensure_file()
+        line = f"{state.value};{seq};{payload}\n".encode()
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.ftruncate(fd, 0)
+        os.write(fd, line)
+        os.fsync(fd)
+        self.logger.debug(f"Wrote to file {self.path} (fd={fd}): {line.strip()}")
 
     @contextmanager
     def open_r(self):
-        self._open(os.O_RDONLY, "r")
+        self._open(os.O_RDONLY)
         try:
             yield self
         finally:
@@ -101,10 +107,10 @@ class TransportFile:
 
     @contextmanager
     def open_rw_locked(self):
-        f = self._open(os.O_RDWR, "r+")
+        fd = self._open(os.O_RDWR)
+        fcntl.flock(fd, fcntl.LOCK_EX)
         try:
-            fcntl.flock(f, fcntl.LOCK_EX)
             yield self
         finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
             self._close()
